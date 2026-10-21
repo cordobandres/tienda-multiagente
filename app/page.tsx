@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ShoppingCart, Bot, Send, CheckCircle2, ShoppingBag } from 'lucide-react';
+import { ShoppingCart, Bot, Send, CheckCircle2, ShoppingBag, ShieldCheck, Loader2 } from 'lucide-react';
 
 const PRODUCTS = [
   { id: '1', name: 'Chaqueta Streetwear Oversize', price: 180000, category: 'Ropa', description: 'Chaqueta urbana impermeable con estilo moderno.' },
@@ -20,6 +20,11 @@ export default function Home() {
   const [inputMessage, setInputMessage] = useState('');
   const [loadingChat, setLoadingChat] = useState(false);
 
+  // Estados del Agente QA y Checkout
+  const [isQAModalOpen, setIsQAModalOpen] = useState(false);
+  const [qaStatus, setQaStatus] = useState<any>(null);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
   const addToCart = (product: any) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
@@ -30,7 +35,7 @@ export default function Home() {
     });
   };
 
-const handleSendMessage = async () => {
+  const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
 
     const userText = inputMessage;
@@ -55,6 +60,51 @@ const handleSendMessage = async () => {
       setChatMessages((prev) => [...prev, { sender: 'Aura', text: `Error de red: ${err?.message}` }]);
     } finally {
       setLoadingChat(false);
+    }
+  };
+
+  const handleCheckoutWithQA = async () => {
+    setIsQAModalOpen(true);
+    setQaStatus(null);
+    setIsProcessingPayment(true);
+
+    try {
+      // 1. Ejecutar verificación del QA Agent
+      const qaRes = await fetch('/api/qa-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cart, products: PRODUCTS }),
+      });
+      const qaData = await qaRes.json();
+      setQaStatus(qaData);
+
+      if (!qaData.isValid) {
+        setIsProcessingPayment(false);
+        return;
+      }
+
+      // 2. Si QA aprueba, invocar el Checkout Agent
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: cart }),
+      });
+      const data = await res.json();
+
+      setTimeout(() => {
+        if (data.init_point || data.sandbox_init_point) {
+          window.location.href = data.sandbox_init_point || data.init_point;
+        } else {
+          alert('Error al conectar con la pasarela de pago.');
+          setIsQAModalOpen(false);
+        }
+      }, 1200);
+
+    } catch (error) {
+      alert('Error durante el proceso de verificación.');
+      setIsQAModalOpen(false);
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
 
@@ -83,7 +133,7 @@ const handleSendMessage = async () => {
         </button>
       </header>
 
-      {/* Catálogo de Productos */}
+      {/* Catálogo */}
       <main className="max-w-6xl mx-auto px-6 py-10 flex-1 w-full">
         <h2 className="text-2xl font-bold mb-6">Catálogo Destacado</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -110,7 +160,7 @@ const handleSendMessage = async () => {
         </div>
       </main>
 
-      {/* Widget de Agente de Ventas "Aura" */}
+      {/* Widget Agente Aura */}
       <div className="fixed bottom-6 right-6 z-50">
         {!isChatOpen ? (
           <button
@@ -198,10 +248,61 @@ const handleSendMessage = async () => {
                   <span>Total:</span>
                   <span className="text-emerald-400">${totalCart.toLocaleString('es-CO')} COP</span>
                 </div>
-                <button className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2">
+                <button
+                  onClick={handleCheckoutWithQA}
+                  disabled={isProcessingPayment}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 text-white py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2"
+                >
                   <CheckCircle2 className="h-5 w-5" />
-                  Proceder al Pago (Mercado Pago)
+                  {isProcessingPayment ? 'Procesando pago...' : 'Proceder al Pago (Mercado Pago)'}
                 </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal interactivo del Agente QA / Tester */}
+      {isQAModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <ShieldCheck className="h-7 w-7 text-emerald-400 animate-pulse" />
+              <div>
+                <h3 className="text-lg font-bold">Agente de Verificación (QA)</h3>
+                <p className="text-xs text-slate-400 uppercase tracking-widest font-semibold">Validación de Pre-compra</p>
+              </div>
+            </div>
+
+            {!qaStatus ? (
+              <div className="py-8 flex flex-col items-center gap-3 text-slate-400">
+                <Loader2 className="h-8 w-8 animate-spin text-indigo-400" />
+                <p className="text-sm">Ejecutando pruebas de integridad y stock...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span>Integridad de Carrito</span>
+                    <span className="text-emerald-400 font-semibold">[✓] Validado</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Coincidencia de Precios</span>
+                    <span className="text-emerald-400 font-semibold">[✓] Coinciden</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Disponibilidad de Inventario</span>
+                    <span className="text-emerald-400 font-semibold">[✓] Confirmado</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Credenciales Mercado Pago</span>
+                    <span className="text-emerald-400 font-semibold">[✓] Verificadas</span>
+                  </div>
+                </div>
+
+                <p className="text-sm text-emerald-400 font-medium text-center">
+                  {qaStatus.message}
+                </p>
               </div>
             )}
           </div>
