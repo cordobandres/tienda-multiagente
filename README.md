@@ -21,7 +21,7 @@ Plataforma e-commerce impulsada por un sistema de **Agentes de IA autónomos** p
 
 ```bash
 # 1. Clonar repositorio
-git clone [https://github.com/tu-usuario/tienda-multiagente.git](https://github.com/tu-usuario/tienda-multiagente.git)
+git clone [https://github.com/cordobandres/tienda-multiagente.git](https://github.com/cordobandres/tienda-multiagente.git)
 
 # 2. Instalar dependencias
 npm install
